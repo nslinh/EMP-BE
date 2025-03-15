@@ -3,7 +3,7 @@ version: '3.8'
 services:
   mongodb:
     image: mongo:latest
-    container_name: wedding_mongodb
+    container_name: emp_mongodb
     restart: always
     ports:
       - "27017:27017"

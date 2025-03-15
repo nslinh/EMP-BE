@@ -7,6 +7,7 @@ const { auth, isAdmin, isOwner } = require('../middleware/auth');
 const Department = require('../models/Department');
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const activityLogger = require('../middleware/activityLogger');
 
 /**
  * @swagger
@@ -163,18 +164,68 @@ router.get('/', auth, async (req, res) => {
       Employee.aggregate([
         { $match: query },
         {
-          $group: {
-            _id: null,
-            totalSalary: { $sum: '$salary' },
-            avgSalary: { $avg: '$salary' },
-            minSalary: { $min: '$salary' },
-            maxSalary: { $max: '$salary' },
-            departmentStats: {
-              $push: {
-                department: '$department',
-                count: 1,
-                totalSalary: '$salary'
+          $lookup: {
+            from: 'attendances',
+            let: { employeeId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$employeeId', '$$employeeId'] },
+                      { $eq: ['$status', 'present'] }
+                    ]
+                  }
+                }
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalWorkingHours: { $sum: '$workingHours' },
+                  totalOvertimeHours: { $sum: '$overtime' }
+                }
               }
+            ],
+            as: 'attendanceStats'
+          }
+        },
+        {
+          $addFields: {
+            workingHours: { 
+              $ifNull: [{ $first: '$attendanceStats.totalWorkingHours' }, 0] 
+            },
+            overtimeHours: { 
+              $ifNull: [{ $first: '$attendanceStats.totalOvertimeHours' }, 0] 
+            },
+            hourlyRate: { $divide: ['$salary', { $multiply: [8, 22] }] },
+            regularPay: {
+              $multiply: [
+                { $divide: ['$salary', { $multiply: [8, 22] }] },
+                { $ifNull: [{ $first: '$attendanceStats.totalWorkingHours' }, 0] }
+              ]
+            },
+            overtimePay: {
+              $multiply: [
+                { $divide: ['$salary', { $multiply: [8, 22] }] },
+                { $ifNull: [{ $first: '$attendanceStats.totalOvertimeHours' }, 0] },
+                1.5
+              ]
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$department',
+            count: { $sum: 1 },
+            totalBaseSalary: { $sum: '$salary' },
+            totalWorkingHours: { $sum: '$workingHours' },
+            totalOvertimeHours: { $sum: '$overtimeHours' },
+            totalRegularPay: { $sum: { $round: ['$regularPay', 2] } },
+            totalOvertimePay: { $sum: { $round: ['$overtimePay', 2] } },
+            totalSalary: { 
+              $sum: { 
+                $round: [{ $add: ['$regularPay', '$overtimePay'] }, 2] 
+              } 
             }
           }
         }
@@ -194,11 +245,11 @@ router.get('/', auth, async (req, res) => {
         totalPages: Math.ceil(total / limit)
       },
       stats: stats[0] || {
-        totalSalary: 0,
-        avgSalary: 0,
-        minSalary: 0,
-        maxSalary: 0,
-        departmentStats: []
+        totalBaseSalary: 0,
+        totalWorkingHours: 0,
+        totalOvertimeHours: 0,
+        totalRegularPay: 0,
+        totalOvertimePay: 0
       }
     });
   } catch (error) {
@@ -287,8 +338,26 @@ router.get('/stats/department', auth, isAdmin, async (req, res) => {
         $group: {
           _id: '$department',
           count: { $sum: 1 },
-          totalSalary: { $sum: '$salary' },
-          avgSalary: { $avg: '$salary' }
+          totalBaseSalary: { $sum: '$baseSalary' },
+          totalWorkingHours: { $sum: '$workingHours' },
+          totalOvertimeHours: { $sum: '$overtimeHours' },
+          totalRegularPay: {
+            $sum: {
+              $multiply: [
+                { $divide: ['$baseSalary', { $multiply: [8, 22] }] },
+                '$workingHours'
+              ]
+            }
+          },
+          totalOvertimePay: {
+            $sum: {
+              $multiply: [
+                { $divide: ['$baseSalary', { $multiply: [8, 22] }] },
+                '$overtimeHours',
+                1.5
+              ]
+            }
+          }
         }
       }
     ]);
@@ -482,6 +551,8 @@ router.post('/', [auth, isAdmin], async (req, res, next) => {
       .populate('department', 'name')
       .populate('userId', 'email role');
 
+    await activityLogger('create', 'employee')(req, res);
+
     res.status(201).json({
       message: 'Thêm nhân viên và tạo tài khoản thành công',
       employee: populatedEmployee
@@ -560,9 +631,10 @@ router.put('/:id', [auth, isAdmin], async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy nhân viên' });
     }
 
-    const updateData = req.body;
+    // Lưu trạng thái trước khi cập nhật để log
+    req.originalBody = employee.toObject();
 
-    // Kiểm tra department mới nếu có thay đổi
+    const updateData = req.body;
     if (updateData.department && updateData.department !== employee.department.toString()) {
       const newDepartment = await Department.findById(updateData.department);
       if (!newDepartment) {
@@ -581,6 +653,18 @@ router.put('/:id', [auth, isAdmin], async (req, res) => {
       updateData.salary = Number(updateData.salary);
     }
 
+    // Tính toán những thay đổi để log
+    const changes = {};
+    Object.keys(updateData).forEach(key => {
+      if (JSON.stringify(employee[key]) !== JSON.stringify(updateData[key])) {
+        changes[key] = {
+          from: employee[key],
+          to: updateData[key]
+        };
+      }
+    });
+    req.changes = changes;
+
     // Cập nhật thông tin
     Object.assign(employee, updateData);
     await employee.save();
@@ -589,6 +673,9 @@ router.put('/:id', [auth, isAdmin], async (req, res) => {
     const updatedEmployee = await Employee.findById(employee._id)
       .populate('department', 'name')
       .populate('userId', 'email role');
+
+    // Log hoạt động
+    await activityLogger('update', 'employee')(req, res);
 
     res.json({
       message: 'Cập nhật thông tin thành công',
@@ -624,68 +711,38 @@ router.put('/:id', [auth, isAdmin], async (req, res) => {
  *         description: Không tìm thấy nhân viên
  */
 router.delete('/:id', [auth, isAdmin], async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    // Tìm nhân viên
-    const employee = await Employee.findById(req.params.id)
-      .populate('userId')
-      .session(session);
-
+    const employee = await Employee.findById(req.params.id);
     if (!employee) {
       return res.status(404).json({ message: 'Không tìm thấy nhân viên' });
     }
 
-    // Xóa avatar từ S3 nếu có
-    if (employee.avatarUrl) {
-      try {
-        const key = employee.avatarUrl.split('/').pop();
-        await s3.send(new DeleteObjectCommand({
-          Bucket: process.env.AWS_S3_BUCKET,
-          Key: `avatars/${key}`
-        }));
-      } catch (error) {
-        console.error('Lỗi khi xóa avatar:', error);
-      }
-    }
+    // Lưu thông tin nhân viên trước khi xóa để log
+    req.originalBody = employee.toObject();
 
-    // Cập nhật số lượng nhân viên trong department
-    await Department.findByIdAndUpdate(
-      employee.department,
-      { $inc: { employeeCount: -1 } },
-      { session }
-    );
-
-    // Xóa employee
-    await employee.remove({ session });
-
-    // Xóa user account
+    // Xóa user account nếu có
     if (employee.userId) {
-      await User.findByIdAndDelete(employee.userId._id, { session });
+      await User.findByIdAndDelete(employee.userId);
     }
 
-    // Commit transaction
-    await session.commitTransaction();
+    await employee.remove();
+
+    // Log hoạt động
+    await activityLogger('delete', 'employee')(req, res);
 
     res.json({ 
-      message: 'Đã xóa nhân viên và tài khoản thành công',
+      message: 'Xóa nhân viên thành công',
       deletedEmployee: {
         id: employee._id,
         fullName: employee.fullName,
-        email: employee.userId?.email
+        email: employee.email
       }
     });
-
   } catch (error) {
-    // Rollback nếu có lỗi
-    await session.abortTransaction();
     res.status(500).json({ 
       message: 'Lỗi khi xóa nhân viên',
       error: error.message 
     });
-  } finally {
-    session.endSession();
   }
 });
 

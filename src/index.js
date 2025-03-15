@@ -11,6 +11,10 @@ const errorHandler = require('./middleware/errorHandler');
 const authRouter = require('./routes/auth');
 const employeesRouter = require('./routes/employees');
 const departmentsRouter = require('./routes/departments');
+const attendanceRouter = require('./routes/attendance');
+const statisticsRouter = require('./routes/statistics');
+const activityLogsRouter = require('./routes/activityLogs');
+const overtimeRouter = require('./routes/overtime');
 
 const app = express();
 
@@ -35,6 +39,22 @@ const options = {
       {
         name: 'Employees',
         description: 'API quản lý nhân viên'
+      },
+      {
+        name: 'Attendance',
+        description: 'API quản lý chấm công và nghỉ phép'
+      },
+      {
+        name: 'Statistics',
+        description: 'API thống kê'
+      },
+      {
+        name: 'ActivityLogs',
+        description: 'API quản lý hoạt động'
+      },
+      {
+        name: 'Overtime',
+        description: 'API quản lý làm thêm giờ'
       }
     ],
     components: {
@@ -118,6 +138,10 @@ mongoose.connect(process.env.MONGODB_URI, {
 app.use('/api/auth', authRouter);
 app.use('/api/employees', employeesRouter);
 app.use('/api/departments', departmentsRouter);
+app.use('/api/attendance', attendanceRouter);
+app.use('/api/statistics', statisticsRouter);
+app.use('/api/logs', activityLogsRouter);
+app.use('/api/overtime', overtimeRouter);
 
 // Health check endpoint
 app.get('/', (req, res) => {

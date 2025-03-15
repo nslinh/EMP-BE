@@ -53,6 +53,18 @@ const employeeSchema = new mongoose.Schema({
   avatarUrl: {
     type: String,
     default: null
+  },
+  baseSalary: {
+    type: Number,
+    required: true
+  },
+  hourlyRate: {
+    type: Number,
+    required: true
+  },
+  overtimeRate: {
+    type: Number,
+    default: 1.5 // Hệ số lương làm thêm giờ
   }
 }, {
   timestamps: true,
@@ -93,6 +105,44 @@ employeeSchema.methods.formatSalary = function() {
 // Tính tuổi
 employeeSchema.methods.getAge = function() {
   return new Date().getFullYear() - this.dateOfBirth.getFullYear();
+};
+
+// Thêm method tính lương
+employeeSchema.methods.calculateSalary = async function(month, year) {
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+
+  const attendance = await mongoose.model('Attendance').aggregate([
+    {
+      $match: {
+        employeeId: this._id,
+        date: { $gte: startDate, $lte: endDate },
+        status: 'present'
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalWorkingHours: { $sum: '$workingHours' },
+        totalOvertimeHours: { $sum: '$overtime' }
+      }
+    }
+  ]);
+
+  const stats = attendance[0] || { totalWorkingHours: 0, totalOvertimeHours: 0 };
+  const hourlyRate = this.salary / (8 * 22); // Lương theo giờ = lương cơ bản / (8h * 22 ngày)
+  
+  const regularPay = stats.totalWorkingHours * hourlyRate;
+  const overtimePay = stats.totalOvertimeHours * hourlyRate * 1.5;
+  
+  return {
+    baseSalary: this.salary,
+    workingHours: stats.totalWorkingHours,
+    overtimeHours: stats.totalOvertimeHours,
+    regularPay: Number(regularPay.toFixed(2)),
+    overtimePay: Number(overtimePay.toFixed(2)),
+    totalSalary: Number((regularPay + overtimePay).toFixed(2))
+  };
 };
 
 module.exports = mongoose.model('Employee', employeeSchema); 
