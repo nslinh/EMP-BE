@@ -56,11 +56,11 @@ const employeeSchema = new mongoose.Schema({
   },
   baseSalary: {
     type: Number,
-    required: true
+    required: false
   },
   hourlyRate: {
     type: Number,
-    required: true
+    required: false
   },
   overtimeRate: {
     type: Number,

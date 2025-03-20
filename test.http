@@ -1,0 +1,204 @@
+# Define base URL and Bearer Token
+@baseUrl = http://localhost:30008/api
+@authToken = Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2N2QzZTZlYmU0Mjg3NzJhYmYzM2YzNjYiLCJpYXQiOjE3NDI0Mzc2NzEsImV4cCI6MTc0MjUyNDA3MX0.OKE7n7Fx9FEKhUdv4dvFLtNNeyxX-oeN4rfwzlVVswA
+
+# Login and get JWT token
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@gmail.com",
+  "password": "pass@123"
+}
+
+###
+
+# Login and get JWT token - user
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "newuser@example.com",
+  "password": "password123"
+}
+
+###
+
+# Get current user details
+GET {{baseUrl}}/auth/me
+Authorization: {{authToken}}
+
+###
+
+# Register a new user (Admin only)
+POST {{baseUrl}}/auth/register
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "email": "newuser2@example.com",
+  "password": "password123",
+  "role": "employee"
+}
+
+###
+
+# Logout
+POST {{baseUrl}}/auth/logout
+Authorization: {{authToken}}
+
+###
+
+# Get all departments
+GET {{baseUrl}}/departments
+Authorization: {{authToken}}
+
+###
+
+# Get department details
+GET {{baseUrl}}/departments/67db7d9ad3cbc32c01d935cb
+Authorization: {{authToken}}
+
+###
+
+# Create a department
+POST {{baseUrl}}/departments
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "name": "IT",
+  "description": "Tech Department"
+}
+
+###
+
+# Transfer employees between departments
+POST {{baseUrl}}/departments/67db7d9ad3cbc32c01d935cb/transfer
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "employeeIds": ["emp1", "emp2"],
+  "newDepartmentId": "dept2"
+}
+
+###
+
+# Get all employees
+GET {{baseUrl}}/employees
+Authorization: {{authToken}}
+
+###
+
+# Get employee details
+GET {{baseUrl}}/employees/{id}
+Authorization: {{authToken}}
+
+###
+
+# Create a new employee (Admin only)
+POST {{baseUrl}}/employees
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "email": "employee2@example.com",
+  "password": "password123",
+  "fullName": "John Doe 2",
+  "dateOfBirth": "1990-01-01",
+  "gender": "male",
+  "address": "123 Street, City",
+  "phoneNumber": "123456789",
+  "department": "67db7d9ad3cbc32c01d935cb",
+  "position": "Developer",
+  "salary": 5000,
+  "startDate": "2023-01-01"
+}
+
+###
+
+# Check-in for attendance
+POST {{baseUrl}}/attendance/check-in
+Authorization: {{authToken}}
+
+###
+
+# Check-out for attendance
+POST {{baseUrl}}/attendance/check-out
+Authorization: {{authToken}}
+
+###
+
+# Request leave
+POST {{baseUrl}}/attendance/leave
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "startDate": "2025-04-01",
+  "endDate": "2025-04-05",
+  "type": "annual",
+  "reason": "Vacation"
+}
+
+###
+
+# Get attendance report (Admin only)
+GET {{baseUrl}}/attendance/report/all?month=3&year=2025
+Authorization: {{authToken}}
+
+###
+
+# Request overtime
+POST {{baseUrl}}/overtime/request
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "date": "2025-03-25",
+  "requestedHours": 2,
+  "reason": "Project deadline"
+}
+
+###
+
+# Approve overtime (Admin only)
+PUT {{baseUrl}}/overtime/approve/{id}
+Authorization: {{authToken}}
+
+###
+
+# Get activity logs
+GET {{baseUrl}}/logs
+Authorization: {{authToken}}
+
+###
+
+# Get user activity logs
+GET {{baseUrl}}/logs/user/{userId}
+Authorization: {{authToken}}
+
+###
+
+# Get activity summary
+GET {{baseUrl}}/logs/summary
+Authorization: {{authToken}}
+
+###
+
+# Get employee statistics
+GET {{baseUrl}}/statistics/employees?groupBy=department
+Authorization: {{authToken}}
+
+###
+
+# Get salary statistics
+GET {{baseUrl}}/statistics/salary?type=month&year=2025&month=3
+Authorization: {{authToken}}
+
+###
+
+# Export statistics report
+GET {{baseUrl}}/statistics/export?format=pdf&type=employees
+Authorization: {{authToken}}
