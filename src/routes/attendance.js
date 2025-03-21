@@ -511,7 +511,8 @@ router.get('/report/all', [auth, isAdmin], async (req, res) => {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
 
-    const data = await Attendance.aggregate([
+    // Xây dựng pipeline
+    const pipeline = [
       {
         $match: {
           date: { $gte: startDate, $lte: endDate }
@@ -534,7 +535,20 @@ router.get('/report/all', [auth, isAdmin], async (req, res) => {
           as: 'departmentInfo'
         }
       },
-      { $unwind: '$departmentInfo' },
+      { $unwind: '$departmentInfo' }
+    ];
+
+    // Thêm filter theo phòng ban nếu có
+    if (department) {
+      pipeline.push({
+        $match: {
+          'employeeInfo.department': new mongoose.Types.ObjectId(department)
+        }
+      });
+    }
+
+    // Thêm các stage group và project
+    pipeline.push(
       {
         $group: {
           _id: '$employeeId',
@@ -566,38 +580,15 @@ router.get('/report/all', [auth, isAdmin], async (req, res) => {
           leaveDays: 1
         }
       }
-    ]);
+    );
 
-    // Thêm filter theo phòng ban nếu có
-    if (department) {
-      data.push({
-        $match: {
-          department: new mongoose.Types.ObjectId(department)
-        }
-      });
-    }
-
-    // Thêm project để format kết quả
-    data.push({
-      $project: {
-        employeeName: 1,
-        department: 1,
-        totalWorkingHours: { $round: ['$totalWorkingHours', 2] },
-        totalOvertimeHours: { $round: ['$totalOvertimeHours', 2] },
-        totalLateMinutes: 1,
-        presentDays: 1,
-        absentDays: 1,
-        leaveDays: 1
-      }
-    });
-
-    const report = await Attendance.aggregate(data);
+    const report = await Attendance.aggregate(pipeline);
 
     // Tính tổng số liệu cho toàn bộ báo cáo
     const totalSummary = {
       totalEmployees: report.length,
-      avgWorkingHours: Number((report.reduce((sum, r) => sum + r.totalWorkingHours, 0) / report.length).toFixed(2)),
-      avgOvertime: Number((report.reduce((sum, r) => sum + r.totalOvertimeHours, 0) / report.length).toFixed(2)),
+      avgWorkingHours: Number((report.reduce((sum, r) => sum + r.totalWorkingHours, 0) / report.length || 0).toFixed(2)),
+      avgOvertime: Number((report.reduce((sum, r) => sum + r.totalOvertimeHours, 0) / report.length || 0).toFixed(2)),
       totalLateCount: report.reduce((sum, r) => sum + (r.totalLateMinutes > 0 ? 1 : 0), 0)
     };
 

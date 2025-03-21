@@ -534,6 +534,8 @@ router.post('/', [auth, isAdmin], async (req, res, next) => {
       department,
       position,
       salary: Number(salary),
+      baseSalary: Number(salary),
+      hourlyRate: Number(salary) / (8 * 22),
       startDate: new Date(startDate)
     });
 
@@ -725,7 +727,16 @@ router.delete('/:id', [auth, isAdmin], async (req, res) => {
       await User.findByIdAndDelete(employee.userId);
     }
 
-    await employee.remove();
+    // Xóa nhân viên bằng findByIdAndDelete thay vì remove()
+    await Employee.findByIdAndDelete(req.params.id);
+
+    // Giảm số lượng nhân viên trong department
+    if (employee.department) {
+      await Department.findByIdAndUpdate(
+        employee.department,
+        { $inc: { employeeCount: -1 } }
+      );
+    }
 
     // Log hoạt động
     await activityLogger('delete', 'employee')(req, res);
