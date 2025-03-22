@@ -18,7 +18,7 @@ const activityLogSchema = new mongoose.Schema({
   },
   entityId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true
+    required: false
   },
   details: {
     type: Object
