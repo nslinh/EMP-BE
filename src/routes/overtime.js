@@ -212,7 +212,6 @@ router.put('/approve/:id', [auth, isAdmin], async (req, res) => {
 router.get('/requests', auth, async (req, res) => {
   try {
     let query = {};
-    console.log("req.user", req.user)
     if (req.user?.role == "admin") {
       const { status, startDate, endDate } = req.query;
       
