@@ -15,6 +15,8 @@ const attendanceRouter = require('./routes/attendance');
 const statisticsRouter = require('./routes/statistics');
 const activityLogsRouter = require('./routes/activityLogs');
 const overtimeRouter = require('./routes/overtime');
+const usersRouter = require('./routes/users');
+
 
 const app = express();
 
@@ -147,6 +149,7 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/statistics', statisticsRouter);
 app.use('/api/logs', activityLogsRouter);
 app.use('/api/overtime', overtimeRouter);
+app.use('/api/users', usersRouter); 
 
 // Health check endpoint
 app.get('/', (req, res) => {
