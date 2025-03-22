@@ -3,7 +3,6 @@ const router = express.Router();
 const { auth, isAdmin } = require('../middleware/auth');
 const OvertimeRequest = require('../models/OvertimeRequest');
 const Employee = require('../models/Employee');
-
 /**
  * @swagger
  * tags:
@@ -213,9 +212,8 @@ router.put('/approve/:id', [auth, isAdmin], async (req, res) => {
 router.get('/requests', auth, async (req, res) => {
   try {
     let query = {};
-    
-    if (req.user.isAdmin) {
-      // Admin có thể xem tất cả yêu cầu và lọc theo các tiêu chí
+    console.log("req.user", req.user)
+    if (req.user?.role == "admin") {
       const { status, startDate, endDate } = req.query;
       
       if (status) {
@@ -233,7 +231,7 @@ router.get('/requests', auth, async (req, res) => {
       }
     } else {
       // Nhân viên chỉ xem được yêu cầu trong quá khứ của mình
-      const employee = await Employee.findOne({ userId: req.user._id });
+      const employee = await Employee.findOne({ userId: req.user?._id });
       query = {
         employeeId: employee._id,
         date: { $lt: new Date() }
@@ -300,7 +298,7 @@ router.get('/requests', auth, async (req, res) => {
  */
 router.get('/requests/:id', auth, async (req, res) => {
   try {
-    const request = await OvertimeRequest.findById(req.params.id)
+    const request = await OvertimeRequest.findById(req.params._id)
       .populate('employeeId', 'firstName lastName')
       .populate('approvedBy', 'firstName lastName');
 
