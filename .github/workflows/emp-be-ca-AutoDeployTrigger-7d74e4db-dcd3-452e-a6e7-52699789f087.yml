@@ -1,0 +1,44 @@
+name: Trigger auto deployment for emp-be-ca
+
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: 
+      [ prod ]
+    paths:
+    - '**'
+    - '.github/workflows/emp-be-ca-AutoDeployTrigger-7d74e4db-dcd3-452e-a6e7-52699789f087.yml'
+
+  # Allow manual trigger 
+  workflow_dispatch:
+      
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout to the branch
+        uses: actions/checkout@v2
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.EMPBECA_AZURE_CREDENTIALS }}
+
+      - name: Build and push container image to registry
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}
+          _dockerfilePathKey_: _dockerfilePath_
+          registryUrl: empacr2501.azurecr.io
+          registryUsername: ${{ secrets.EMPBECA_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.EMPBECA_REGISTRY_PASSWORD }}
+          containerAppName: emp-be-ca
+          resourceGroup: emp-rg
+          imageToBuild: empacr2501.azurecr.io/emp-be-ca:${{ github.sha }}
+          
+            
+
+     
+
