@@ -5,7 +5,7 @@ const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
-
+const path = require("path")
 /**
  * @swagger
  * /api/statistics/employees:
@@ -391,34 +391,8 @@ router.get('/salary', [auth, isAdmin], async (req, res) => {
  *               type: string
  *               format: binary
  *               description: File PDF
- *         examples:
- *           excel:
- *             summary: Excel Report
- *             value:
- *               type: employees
- *               columns:
- *                 - Họ Tên
- *                 - Phòng Ban
- *                 - Chức Vụ
- *                 - Lương
- *           pdf:
- *             summary: PDF Report
- *             value:
- *               type: employees
- *               sections:
- *                 - Tiêu đề báo cáo
- *                 - Ngày xuất báo cáo
- *                 - Bảng dữ liệu
  *       400:
  *         description: Lỗi tham số
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Định dạng không hợp lệ
  *       401:
  *         description: Không có quyền truy cập
  *       500:
@@ -430,11 +404,22 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
     
     if (format !== 'excel' && format !== 'pdf') {
       return res.status(400).json({ 
-        message: 'Hien tai chi ho tro xuat file Excel va PDF' 
+        message: 'Hiện tại chỉ hỗ trợ xuất file Excel và PDF' 
+      });
+    }
+
+    // Validate type
+    if (!['employees', 'salary', 'attendance'].includes(type)) {
+      return res.status(400).json({
+        message: 'Loại báo cáo không hợp lệ'
       });
     }
 
     let data;
+    const currentDate = new Date();
+    const fileName = `report-${type}-${currentDate.toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+    const filePath = path.join(__dirname, 'temp', fileName);
+
     switch (type) {
       case 'employees':
         data = await Employee.find()
@@ -442,13 +427,29 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
           .select('fullName department position salary')
           .lean()
           .then(employees => employees.map(emp => ({
-            ...emp,
-            department: emp.department?.name || 'N/A',
-            salary: emp.salary.toLocaleString('vi-VN')
+            'Họ Tên': emp.fullName,
+            'Phòng Ban': emp.department?.name || 'N/A',
+            'Chức Vụ': emp.position,
+            'Lương': emp.salary.toLocaleString('vi-VN')
           })));
         break;
 
       case 'salary':
+        const { year, month, quarter } = req.query;
+        
+        let dateFilter = {};
+        if (month) {
+          dateFilter = {
+            year: parseInt(year) || currentDate.getFullYear(),
+            month: parseInt(month)
+          };
+        } else if (quarter) {
+          dateFilter = {
+            year: parseInt(year) || currentDate.getFullYear(),
+            quarter: parseInt(quarter)
+          };
+        }
+
         data = await Employee.aggregate([
           {
             $lookup: {
@@ -462,19 +463,48 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
           {
             $group: {
               _id: '$department',
-              department: { $first: '$departmentInfo.name' },
-              totalSalary: { $sum: '$salary' },
-              avgSalary: { $avg: '$salary' },
-              employeeCount: { $sum: 1 }
+              'Phòng Ban': { $first: '$departmentInfo.name' },
+              'Tổng Lương': { 
+                $sum: { 
+                  $round: ['$salary', 0] 
+                }
+              },
+              'Lương Trung Bình': { 
+                $avg: { 
+                  $round: ['$salary', 0] 
+                }
+              },
+              'Số Nhân Viên': { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              'Phòng Ban': 1,
+              'Tổng Lương': { 
+                $toString: { 
+                  $concat: [
+                    { $toString: '$Tổng Lương' }, 
+                    ' VNĐ'
+                  ] 
+                }
+              },
+              'Lương Trung Bình': { 
+                $toString: { 
+                  $concat: [
+                    { $toString: { $round: ['$Lương Trung Bình', 0] } }, 
+                    ' VNĐ'
+                  ] 
+                }
+              },
+              'Số Nhân Viên': 1
             }
           }
         ]);
         break;
 
       case 'attendance':
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
+        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
         
         data = await Attendance.aggregate([
           {
@@ -503,52 +533,43 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
           {
             $group: {
               _id: '$employeeId',
-              employeeName: { $first: '$employeeInfo.fullName' },
-              department: { $first: '$departmentInfo.name' },
-              totalDays: { $sum: 1 },
-              totalLate: { 
+              'Họ Tên': { $first: '$employeeInfo.fullName' },
+              'Phòng Ban': { $first: '$departmentInfo.name' },
+              'Số Ngày Làm Việc': { $sum: 1 },
+              'Số Lần Đi Muộn': { 
                 $sum: { $cond: [{ $gt: ['$lateMinutes', 0] }, 1, 0] }
               },
-              avgWorkingHours: { $avg: '$workingHours' }
+              'Giờ Làm Trung Bình': { 
+                $round: [{ $avg: '$workingHours' }, 2] 
+              }
             }
           },
           {
             $project: {
-              employeeName: 1,
-              department: 1,
-              totalDays: 1,
-              totalLate: 1,
-              avgWorkingHours: { $round: ['$avgWorkingHours', 2] }
+              _id: 0,
+              'Họ Tên': 1,
+              'Phòng Ban': 1,
+              'Số Ngày Làm Việc': 1,
+              'Số Lần Đi Muộn': 1,
+              'Giờ Làm Trung Bình': 1
             }
           }
         ]);
         break;
-
-      default:
-        return res.status(400).json({
-          message: 'Loại báo cáo không hợp lệ'
-        });
     }
 
     if (format === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Report');
 
-      // Cấu hình columns theo type
-      if (type === 'employees') {
-        worksheet.columns = [
-          { header: 'Họ Tên', key: 'fullName', width: 30 },
-          { header: 'Phòng Ban', key: 'department', width: 20 },
-          { header: 'Chức Vụ', key: 'position', width: 20 },
-          { header: 'Lương', key: 'salary', width: 15 }
-        ];
-      } else if (type === 'salary') {
-        worksheet.columns = [
-          { header: 'Phòng Ban', key: 'department', width: 30 },
-          { header: 'Tổng Lương', key: 'totalSalary', width: 20 },
-          { header: 'Lương Trung Bình', key: 'avgSalary', width: 20 },
-          { header: 'Số Nhân Viên', key: 'employeeCount', width: 15 }
-        ];
+      // Lấy tên cột từ dữ liệu
+      if (data.length > 0) {
+        const columns = Object.keys(data[0]).map(key => ({
+          header: key,
+          key: key,
+          width: 20
+        }));
+        worksheet.columns = columns;
       }
 
       // Style cho header
@@ -558,27 +579,58 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
       // Thêm data
       worksheet.addRows(data);
 
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename=report-${type}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      // Style cho các cột số liệu
+      worksheet.eachRow((row, rowNumber) => {
+        row.eachCell((cell) => {
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        });
+      });
+
+      res.setHeader(
+        'Content-Type', 
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition', 
+        `attachment; filename=report-${type}-${currentDate.toISOString().split('T')[0]}.xlsx`
+      );
       
-      await workbook.xlsx.write(res);
+      await workbook.xlsx.writeFile(filePath);
+      res.download(filePath, fileName, (err) => {
+        fs.unlink(filePath, (unlinkErr) => {
+          if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
+        });
+        
+        if (err) {
+          console.error('Error sending file:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ message: 'Lỗi khi tải file' });
+          }
+        }
+      })
     } else {
       const doc = new PDFDocument({
         size: 'A4',
         margin: 50,
         info: {
-          Title: `Bao cao ${type}`,
+          Title: `Báo cáo ${type}`,
           Author: 'HR Management System',
         }
       });
 
+      // Set response headers
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=report-${type}-${new Date().toISOString().split('T')[0]}.pdf`);
-      doc.pipe(res);
+      res.setHeader(
+        'Content-Disposition', 
+        `attachment; filename=report-${type}-${currentDate.toISOString().split('T')[0]}.pdf`
+      );
+
+      const writeStream = fs.createWriteStream(filePath);
+      doc.pipe(writeStream);
 
       // Tiêu đề
       doc.fontSize(16)
-         .text(`BAO CAO ${type.toUpperCase()}`, {
+         .text(`BÁO CÁO ${type.toUpperCase()}`, {
            align: 'center',
            underline: true
          });
@@ -586,40 +638,50 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
 
       // Ngày xuất báo cáo
       doc.fontSize(12)
-         .text(`Ngay xuat bao cao: ${new Date().toLocaleDateString('vi-VN')}`, {
+         .text(`Ngày xuất báo cáo: ${currentDate.toLocaleDateString('vi-VN')}`, {
            align: 'right'
          });
       doc.moveDown();
 
       // Tạo bảng dữ liệu
-      const tableTop = 150;
-      let currentTop = tableTop;
+      if (data.length > 0) {
+        const headers = Object.keys(data[0]);
+        const tableTop = 150;
+        let currentTop = tableTop;
+        const rowHeight = 30;
+        const columnWidth = 100;
 
-      if (type === 'employees') {
-        // Headers
-        doc.fontSize(10);
-        doc.text('STT', 50, currentTop);
-        doc.text('Ho Ten', 100, currentTop);
-        doc.text('Phong Ban', 250, currentTop);
-        doc.text('Chuc Vu', 350, currentTop);
-        doc.text('Luong', 450, currentTop);
-        
-        currentTop += 20;
+        // Vẽ headers
+        headers.forEach((header, i) => {
+          doc.fontSize(10)
+             .text(
+               header,
+               50 + (i * columnWidth),
+               currentTop,
+               { width: columnWidth, align: 'left' }
+             );
+        });
 
-        // Data rows
-        data.forEach((emp, index) => {
+        currentTop += rowHeight;
+
+        // Vẽ data
+        data.forEach((row, rowIndex) => {
           if (currentTop > 700) {
             doc.addPage();
             currentTop = 50;
           }
 
-          doc.text((index + 1).toString(), 50, currentTop);
-          doc.text(removeVietnameseTones(emp.fullName), 100, currentTop);
-          doc.text(removeVietnameseTones(emp.department), 250, currentTop);
-          doc.text(removeVietnameseTones(emp.position), 350, currentTop);
-          doc.text(emp.salary, 450, currentTop);
-          
-          currentTop += 20;
+          headers.forEach((header, i) => {
+            doc.fontSize(10)
+               .text(
+                 row[header].toString(),
+                 50 + (i * columnWidth),
+                 currentTop,
+                 { width: columnWidth, align: 'left' }
+               );
+          });
+
+          currentTop += rowHeight;
         });
       }
 
@@ -636,6 +698,30 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
       }
 
       doc.end();
+
+      writeStream.on('finish', () => {
+        // Gửi file về client
+        res.download(filePath, fileName, (err) => {
+          // Xóa file sau khi đã gửi xong
+          fs.unlink(filePath, (unlinkErr) => {
+            if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
+          });
+          
+          if (err) {
+            console.error('Error sending file:', err);
+            if (!res.headersSent) {
+              res.status(500).json({ message: 'Lỗi khi tải file' });
+            }
+          }
+        });
+      });
+
+      writeStream.on('error', (error) => {
+        console.error('Error writing file:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Lỗi khi tạo file' });
+        }
+      });
     }
   } catch (error) {
     console.error('Export error:', error);

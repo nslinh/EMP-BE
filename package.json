@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "start:dev": "nodemon src/index.js",
+    "dev": "nodemon src/index.js",
     "build": "echo 'No build step required'",
     "start:prod": "NODE_ENV=production node src/index.js",
     "create-admin": "node src/scripts/createAdmin.js"

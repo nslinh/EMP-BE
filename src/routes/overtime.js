@@ -233,7 +233,7 @@ router.get('/requests', auth, async (req, res) => {
       const employee = await Employee.findOne({ userId: req.user?._id });
       query = {
         employeeId: employee._id,
-        date: { $lt: new Date() }
+        // date: { $lt: new Date() }
       };
     }
 
