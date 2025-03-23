@@ -1,9 +1,9 @@
-FROM node:18-slim
+FROM node:22.14.0-alpine3.21
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package*.json .
 
 # Install dependencies
 RUN npm ci --only=production
@@ -11,9 +11,8 @@ RUN npm ci --only=production
 # Copy app source
 COPY . .
 
-# Expose port
-ENV PORT=8080
-EXPOSE 8080
+# Set PORT
+ENV PORT=80
 
 # Start app
-CMD ["node", "src/index.js"]
+CMD ["npm", "run start:prod"]
