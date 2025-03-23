@@ -22,7 +22,11 @@ const userSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
-  }
+  },
+  avatarUrl: {
+    type: String,
+    default: null
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

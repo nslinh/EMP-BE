@@ -805,11 +805,10 @@ router.get('/export', [auth, isAdmin], async (req, res) => {
 router.post('/avatar', [auth, isOwner, upload.single('avatar')], async (req, res) => {
   try {
     const employee = req.employee;
-
     if (!req.file) {
       return res.status(400).json({ message: 'Vui lòng upload file ảnh' });
     }
-
+    const user = await User.findById(employee.userId);
     // Xóa avatar cũ nếu có
     if (employee.avatarUrl) {
       try {
@@ -837,6 +836,9 @@ router.post('/avatar', [auth, isOwner, upload.single('avatar')], async (req, res
     // Cập nhật URL trong database
     employee.avatarUrl = avatarUrl;
     await employee.save();
+
+    user.avatarUrl = avatarUrl;
+    await user.save();
 
     res.json({ 
       message: 'Upload avatar thành công',
