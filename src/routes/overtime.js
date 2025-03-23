@@ -238,8 +238,8 @@ router.get('/requests', auth, async (req, res) => {
     }
 
     const requests = await OvertimeRequest.find(query)
-      .populate('employeeId', 'firstName lastName')
-      .populate('approvedBy', 'firstName lastName')
+      .populate('employeeId', 'fullName')
+      .populate('approvedBy', 'fullName')
       .sort({ date: -1 });
 
     res.json(requests);
@@ -298,8 +298,8 @@ router.get('/requests', auth, async (req, res) => {
 router.get('/requests/:id', auth, async (req, res) => {
   try {
     const request = await OvertimeRequest.findById(req.params._id)
-      .populate('employeeId', 'firstName lastName')
-      .populate('approvedBy', 'firstName lastName');
+      .populate('employeeId', 'fullName')
+      .populate('approvedBy', 'fullName');
 
     if (!request) {
       return res.status(404).json({ message: 'Không tìm thấy yêu cầu' });
