@@ -15,4 +15,4 @@ COPY . .
 ENV PORT=80
 
 # Start app
-CMD ["npm", "run start:prod"]
+CMD ["npm", "start"]
